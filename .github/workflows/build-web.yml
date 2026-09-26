@@ -6,6 +6,11 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,6 +18,17 @@ jobs:
     steps:
       - name: Download project
         uses: actions/checkout@v4
+
+      - name: Extract Godot project
+        run: |
+          mkdir -p extracted
+          unzip -o DUYNZ_TeaShop_Godot_Complete.zip -d extracted
+
+          PROJECT_DIR=$(dirname "$(find extracted -name project.godot -print -quit)")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+          echo "Godot project found at:"
+          echo "$PROJECT_DIR"
 
       - name: Setup Godot
         uses: chickensoft-games/setup-godot@v2
@@ -22,12 +38,15 @@ jobs:
 
       - name: Import project
         run: |
-          godot --headless --editor --quit
+          godot --headless --path "$PROJECT_DIR" --editor --quit
 
       - name: Build Web
         run: |
           mkdir -p build
-          godot --headless --path . --export-release "Web" build/index.html
+          godot --headless \
+            --path "$PROJECT_DIR" \
+            --export-release "Web" \
+            build/index.html
 
       - name: Upload Web
         uses: actions/upload-pages-artifact@v3
@@ -44,7 +63,9 @@ jobs:
 
     environment:
       name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
