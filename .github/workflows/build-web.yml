@@ -11,23 +11,36 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Build Godot Web
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download project
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract Godot project
+      - name: Find Godot project
+        shell: bash
         run: |
-          mkdir -p extracted
-          unzip -o DUYNZ_TeaShop_Godot_Complete.zip -d extracted
+          set -e
 
-          PROJECT_DIR=$(dirname "$(find extracted -name project.godot -print -quit)")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          PROJECT_FILE=$(find . -name "project.godot" -type f | head -n 1)
 
-          echo "Godot project found at:"
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "ERROR: Không tìm thấy project.godot"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT_FILE")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Đã tìm thấy project:"
           echo "$PROJECT_DIR"
 
       - name: Setup Godot
@@ -36,36 +49,56 @@ jobs:
           version: 4.4.1
           use-dotnet: false
 
-      - name: Import project
+      - name: Check Godot
         run: |
-          godot --headless --path "$PROJECT_DIR" --editor --quit
+          godot --version
 
-      - name: Build Web
+      - name: Import Godot project
         run: |
+          godot \
+            --headless \
+            --path "$PROJECT_DIR" \
+            --editor \
+            --quit
+
+      - name: Create build directory
+        run: |
+          rm -rf build
           mkdir -p build
-          godot --headless \
+
+      - name: Export Web
+        run: |
+          godot \
+            --headless \
             --path "$PROJECT_DIR" \
             --export-release "Web" \
-            build/index.html
+            "$GITHUB_WORKSPACE/build/index.html"
 
-      - name: Upload Web
+      - name: Check Web build
+        run: |
+          if [ ! -f "build/index.html" ]; then
+            echo "ERROR: Không tạo được build/index.html"
+            exit 1
+          fi
+
+          echo "Build Web thành công:"
+          ls -lah build
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: build
 
   deploy:
+    name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
-
-    permissions:
-      pages: write
-      id-token: write
 
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
